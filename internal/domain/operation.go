@@ -35,6 +35,12 @@ type Operation struct {
 }
 
 func (operation *Operation) Normalize() error {
+	if operation == nil {
+		return ErrInvalidOperation
+	}
+	if operation.Reference != "" && operation.Reference == operation.ExternalID {
+		return ErrInvalidOperation
+	}
 	fields := []string{operation.ProviderID, operation.ExternalID, operation.IdempotencyKey, operation.PlayerID, operation.WalletID, operation.RoundID, operation.GameID}
 	for _, value := range fields {
 		if value == "" || strings.TrimSpace(value) != value || len(value) > 256 {

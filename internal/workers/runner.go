@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"example.com/financial-service/internal/application"
+	"example.com/financial-service/internal/configuration"
 	"example.com/financial-service/internal/domain"
 	"example.com/financial-service/internal/infrastructure/authentication"
 	"example.com/financial-service/internal/infrastructure/messaging"
@@ -15,22 +16,24 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
 	"github.com/aws/aws-sdk-go-v2/service/sqs/types"
 	"log/slog"
+	"strconv"
 	"sync"
 	"time"
 )
 
 type Runner struct {
-	repository *postgres.Repository
-	service    *application.Service
-	queues     *messaging.Client
-	auth       *authentication.Validator
-	cancel     context.CancelFunc
-	wait       sync.WaitGroup
-	done       chan struct{}
+	repository      *postgres.Repository
+	service         *application.Service
+	queues          *messaging.Client
+	auth            *authentication.Validator
+	cancel          context.CancelFunc
+	wait            sync.WaitGroup
+	done            chan struct{}
+	providerSenders map[string]string
 }
 
-func NewRunner(repository *postgres.Repository, service *application.Service, queues *messaging.Client, auth *authentication.Validator) *Runner {
-	return &Runner{repository: repository, service: service, queues: queues, auth: auth, done: make(chan struct{})}
+func NewRunner(repository *postgres.Repository, service *application.Service, queues *messaging.Client, auth *authentication.Validator, config configuration.Config) *Runner {
+	return &Runner{repository: repository, service: service, queues: queues, auth: auth, done: make(chan struct{}), providerSenders: config.ProviderSenders}
 }
 func (r *Runner) Start(ctx context.Context) error {
 	background, cancel := context.WithCancel(context.Background())
@@ -117,11 +120,15 @@ func (r *Runner) handle(ctx context.Context, message types.Message) error {
 	if input.MessageID == "" || len(input.MessageID) > 256 || input.Type != "WagerTransactionRequested" || input.OccurredAt.IsZero() {
 		return domain.ErrInvalidOperation
 	}
-	claims, err := r.auth.Verify(ctx, input.AccessToken)
-	if err != nil {
-		return domain.ErrForbidden
+	provider := r.providerSenders[message.Attributes["SenderId"]]
+	if input.AccessToken != "" {
+		claims, verifyErr := r.auth.Verify(ctx, input.AccessToken)
+		if verifyErr != nil || claims.Access != "provider" {
+			return domain.ErrForbidden
+		}
+		provider = claims.ProviderID
 	}
-	if claims.Access != "provider" || claims.ProviderID != input.Data.ProviderID {
+	if provider == "" || provider != input.Data.ProviderID {
 		return domain.ErrForbidden
 	}
 	input.Data.Operation.IdempotencyKey = input.Data.IdempotencyKey
@@ -137,13 +144,13 @@ func (r *Runner) handle(ctx context.Context, message types.Message) error {
 	if err != nil {
 		return err
 	}
-	slog.Info("message committed", "messageId", input.MessageID, "transactionId", result.TransactionID, "providerId", claims.ProviderID, "walletId", input.Data.WalletID, "status", result.Status)
+	slog.Info("message committed", "messageId", input.MessageID, "transactionId", result.TransactionID, "providerId", provider, "walletId", input.Data.WalletID, "status", result.Status)
 	return nil
 }
 func (r *Runner) consume(ctx context.Context) {
 	defer r.wait.Done()
 	for ctx.Err() == nil {
-		batch, err := r.queues.API.ReceiveMessage(ctx, &sqs.ReceiveMessageInput{QueueUrl: aws.String(r.queues.QueueURL), MaxNumberOfMessages: 1, WaitTimeSeconds: 10, VisibilityTimeout: 60, MessageSystemAttributeNames: []types.MessageSystemAttributeName{types.MessageSystemAttributeNameApproximateReceiveCount}})
+		batch, err := r.queues.API.ReceiveMessage(ctx, &sqs.ReceiveMessageInput{QueueUrl: aws.String(r.queues.QueueURL), MaxNumberOfMessages: 1, WaitTimeSeconds: 10, VisibilityTimeout: 60, MessageSystemAttributeNames: []types.MessageSystemAttributeName{types.MessageSystemAttributeNameApproximateReceiveCount, types.MessageSystemAttributeNameSenderId}})
 		if err != nil {
 			if ctx.Err() != nil {
 				return
@@ -165,7 +172,14 @@ func (r *Runner) consume(ctx context.Context) {
 					slog.Warn("sqs delete retry", "error", err)
 				}
 			} else {
-				visibility := int32(10)
+				attempt, _ := strconv.Atoi(message.Attributes["ApproximateReceiveCount"])
+				if attempt < 1 {
+					attempt = 1
+				}
+				if attempt > 5 {
+					attempt = 5
+				}
+				visibility := int32(1 << attempt)
 				if ctx.Err() != nil {
 					visibility = 0
 				}

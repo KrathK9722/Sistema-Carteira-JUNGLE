@@ -82,11 +82,12 @@ DROP TRIGGER IF EXISTS ledger_immutable ON wallet_ledger;
 CREATE TRIGGER ledger_immutable BEFORE UPDATE OR DELETE OR TRUNCATE ON wallet_ledger FOR EACH STATEMENT EXECUTE FUNCTION protect_ledger();
 CREATE OR REPLACE FUNCTION protect_terminal_transaction() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
+ IF TG_OP='DELETE' THEN RAISE EXCEPTION 'transaction deletion forbidden'; END IF;
  IF OLD.status IN ('PROCESSED','REJECTED','FAILED') THEN RAISE EXCEPTION 'terminal transaction is immutable'; END IF;
  RETURN NEW;
 END $$;
 DROP TRIGGER IF EXISTS transaction_terminal ON wager_transactions;
-CREATE TRIGGER transaction_terminal BEFORE UPDATE ON wager_transactions FOR EACH ROW EXECUTE FUNCTION protect_terminal_transaction();
+CREATE TRIGGER transaction_terminal BEFORE UPDATE OR DELETE ON wager_transactions FOR EACH ROW EXECUTE FUNCTION protect_terminal_transaction();
 CREATE TABLE IF NOT EXISTS inbox (
  consumer_name text NOT NULL, message_id text NOT NULL, payload_hash text NOT NULL,
  received_at timestamptz NOT NULL DEFAULT now(), completed_at timestamptz,

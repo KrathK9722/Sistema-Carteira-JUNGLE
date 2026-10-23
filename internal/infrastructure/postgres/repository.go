@@ -78,6 +78,14 @@ func recordMovement(ctx context.Context, tx pgx.Tx, id string, wallet domain.Wal
 	if err != nil {
 		return err
 	}
+	beforeMoney, err := domain.NewMoney(decimal(before), money.Currency)
+	if err != nil {
+		return err
+	}
+	_, err = domain.NewWalletLedgerEntry(entryID, wallet.ID(), id, direction, amount, beforeMoney, wallet.Balance(), time.Now())
+	if err != nil {
+		return err
+	}
 	_, err = tx.Exec(ctx, `INSERT INTO wallet_ledger(id,wallet_id,transaction_id,direction,amount,currency,balance_before,balance_after,wallet_version) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`, entryID, wallet.ID(), id, direction, amount.MinorUnits(), money.Currency, before, wallet.Balance().MinorUnits(), wallet.Version())
 	if err != nil {
 		return err
