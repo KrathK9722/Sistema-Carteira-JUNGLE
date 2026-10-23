@@ -6,6 +6,7 @@ import (
 	"time"
 )
 
+// Cada teste utiliza uma carteira individual para garantir a credibilidade dos testes da carteira
 func TestNewWalletWithValidData(t *testing.T) {
 	registerTestSummary(t)
 
@@ -437,7 +438,7 @@ func TestWalletCreditWithValidAmount(t *testing.T) {
 	)
 
 	t.Logf(
-		"Saldo: %d + Crédito: %d centavos = Saldo Final: %d centavos",
+		"Saldo: %d + Crédito: %d centavos -> Saldo Final: %d centavos",
 		initialBalance.MinorUnits(),
 		creditAmount.MinorUnits(),
 		wallet.Balance().MinorUnits(),
@@ -674,4 +675,340 @@ func TestWalletNegativeCredit(t *testing.T) {
 		t.Log("Crédito negativo negado")
 	}
 
+}
+
+func TestWalletDebitWithValidAmount(t *testing.T) {
+	registerTestSummary(t)
+
+	initialBalance, err := NewMoney("100.00", "BRL")
+
+	if err != nil {
+		t.Fatalf("não foi possível criar o saldo inicial: %v", err)
+	}
+
+	creationTime := time.Date(
+		2026,
+		time.October,
+		23,
+		12,
+		0,
+		0,
+		0,
+		time.UTC,
+	)
+
+	wallet, err := NewWallet(
+		"wallet-473",
+		"player-586",
+		initialBalance,
+		creationTime,
+	)
+
+	if err != nil {
+		t.Fatalf("não foi possível criar a carteira: %v", err)
+	}
+
+	debitAmount, err := NewMoney("25.00", "BRL")
+
+	if err != nil {
+		t.Fatalf("não foi possível criar o débito: %v", err)
+	}
+
+	updateTime := creationTime.Add(time.Minute)
+
+	err = wallet.Debit(debitAmount, updateTime)
+
+	if err != nil {
+		t.Fatalf("não foi possível debitar a carteira: %v", err)
+	}
+
+	if wallet.Balance().MinorUnits() != 7500 {
+		t.Errorf(
+			"esperava saldo de 7500 centavos, recebeu %d",
+			wallet.Balance().MinorUnits(),
+		)
+	}
+
+	if wallet.Version() != 2 {
+		t.Errorf(
+			"esperava versão 2, recebeu %d",
+			wallet.Version(),
+		)
+	}
+
+	if wallet.Currency() != "BRL" {
+		t.Error("o débito alterou a moeda")
+	}
+
+	if !wallet.UpdateDate().Equal(updateTime) {
+		t.Error("a data de atualização está incorreta")
+	}
+
+	if !wallet.CreateDate().Equal(creationTime) {
+		t.Error("o débito alterou a data de criação")
+	}
+
+	if !t.Failed() {
+		t.Logf(
+			"Saldo: %d - Débito: %d centavos -> Saldo Final: %d centavos",
+			initialBalance.MinorUnits(),
+			debitAmount.MinorUnits(),
+			wallet.Balance().MinorUnits(),
+		)
+		t.Logf(
+			"Versão: 1 → %d",
+			wallet.Version(),
+		)
+	}
+}
+
+func TestWalletDebitWithInsufficientBalance(t *testing.T) {
+	registerTestSummary(t)
+
+	initialBalance, err := NewMoney("100.00", "BRL")
+
+	if err != nil {
+		t.Fatalf("não foi possível criar o saldo inicial: %v", err)
+	}
+
+	creationTime := time.Date(
+		2026,
+		time.October,
+		23,
+		12,
+		0,
+		0,
+		0,
+		time.UTC,
+	)
+
+	wallet, err := NewWallet(
+		"wallet-473",
+		"player-586",
+		initialBalance,
+		creationTime,
+	)
+
+	if err != nil {
+		t.Fatalf("não foi possível criar a carteira: %v", err)
+	}
+
+	debitAmount, err := NewMoney("120.00", "BRL")
+
+	if err != nil {
+		t.Fatalf("não foi possível criar o débito: %v", err)
+	}
+
+	balanceBefore := wallet.Balance()
+	versionBefore := wallet.Version()
+	updateDateBefore := wallet.UpdateDate()
+
+	updateTime := creationTime.Add(time.Minute)
+
+	err = wallet.Debit(debitAmount, updateTime)
+
+	if !errors.Is(err, ErrInsufficientBalance) {
+		t.Fatalf(
+			"esperava ErrInsufficientBalance, recebeu: %v",
+			err,
+		)
+	}
+
+	if wallet.Balance().MinorUnits() != balanceBefore.MinorUnits() {
+		t.Error("o débito rejeitado alterou o saldo")
+	}
+
+	if wallet.Currency() != balanceBefore.Currency() {
+		t.Error("o débito rejeitado alterou a moeda")
+	}
+
+	if wallet.Version() != versionBefore {
+		t.Error("o débito rejeitado alterou a versão")
+	}
+
+	if !wallet.UpdateDate().Equal(updateDateBefore) {
+		t.Error("o débito rejeitado alterou a data de atualização")
+	}
+
+	if !t.Failed() {
+		t.Logf(
+			"Débito de %d centavos rejeitado. Saldo preservado: %d centavos. Versão: %d.",
+			debitAmount.MinorUnits(),
+			wallet.Balance().MinorUnits(),
+			wallet.Version(),
+		)
+	}
+}
+
+// Teste com operação sequencial utilizando uma unica carteira pra testar um fluxo completo
+func TestWalletWithSequentialOperations(t *testing.T) {
+	registerTestSummary(t)
+
+	// 1. Cria a carteira com R$100,00.
+	initialBalance, err := NewMoney("100.00", "BRL")
+
+	if err != nil {
+		t.Fatalf("não foi possível criar o saldo inicial: %v", err)
+	}
+
+	creationTime := time.Date(
+		2026,
+		time.October,
+		23,
+		12,
+		0,
+		0,
+		0,
+		time.UTC,
+	)
+
+	wallet, err := NewWallet(
+		"wallet-473",
+		"player-586",
+		initialBalance,
+		creationTime,
+	)
+
+	if err != nil {
+		t.Fatalf("não foi possível criar a carteira: %v", err)
+	}
+
+	if wallet.Balance().MinorUnits() != 10000 {
+		t.Fatalf(
+			"esperava saldo inicial de 10000, recebeu %d",
+			wallet.Balance().MinorUnits(),
+		)
+	}
+
+	if wallet.Version() != 1 {
+		t.Fatalf("esperava versão inicial 1, recebeu %d", wallet.Version())
+	}
+
+	t.Logf(
+		"Abertura: saldo %d centavos | versão %d",
+		wallet.Balance().MinorUnits(),
+		wallet.Version(),
+	)
+
+	// 2. Debita R$25,00 da mesma carteira.
+	debitAmount, err := NewMoney("25.00", "BRL")
+
+	if err != nil {
+		t.Fatalf("não foi possível criar o primeiro débito: %v", err)
+	}
+
+	debitTime := creationTime.Add(time.Minute)
+
+	err = wallet.Debit(debitAmount, debitTime)
+
+	if err != nil {
+		t.Fatalf("o primeiro débito deveria ser aceito: %v", err)
+	}
+
+	if wallet.Balance().MinorUnits() != 7500 {
+		t.Fatalf(
+			"esperava saldo de 7500 após o débito, recebeu %d",
+			wallet.Balance().MinorUnits(),
+		)
+	}
+
+	if wallet.Version() != 2 {
+		t.Fatalf("esperava versão 2, recebeu %d", wallet.Version())
+	}
+
+	if !wallet.UpdateDate().Equal(debitTime) {
+		t.Fatal("o primeiro débito não atualizou a data corretamente")
+	}
+
+	t.Logf(
+		"Débito de 2500: saldo %d centavos | versão %d",
+		wallet.Balance().MinorUnits(),
+		wallet.Version(),
+	)
+
+	// 3. Tenta debitar R$120,00 quando restam apenas R$75,00.
+	excessiveDebit, err := NewMoney("120.00", "BRL")
+
+	if err != nil {
+		t.Fatalf("não foi possível criar o segundo débito: %v", err)
+	}
+
+	rejectedDebitTime := debitTime.Add(time.Minute)
+
+	err = wallet.Debit(excessiveDebit, rejectedDebitTime)
+
+	if !errors.Is(err, ErrInsufficientBalance) {
+		t.Fatalf(
+			"esperava ErrInsufficientBalance, recebeu %v",
+			err,
+		)
+	}
+
+	if wallet.Balance().MinorUnits() != 7500 {
+		t.Fatalf(
+			"o débito rejeitado alterou o saldo para %d",
+			wallet.Balance().MinorUnits(),
+		)
+	}
+
+	if wallet.Version() != 2 {
+		t.Fatalf(
+			"o débito rejeitado alterou a versão para %d",
+			wallet.Version(),
+		)
+	}
+
+	if !wallet.UpdateDate().Equal(debitTime) {
+		t.Fatal("o débito rejeitado alterou a data de atualização")
+	}
+
+	t.Logf(
+		"Débito de 12000 rejeitado: saldo %d centavos | versão %d",
+		wallet.Balance().MinorUnits(),
+		wallet.Version(),
+	)
+
+	// 4. Credita R$50,00 na mesma carteira.
+	creditAmount, err := NewMoney("50.00", "BRL")
+
+	if err != nil {
+		t.Fatalf("não foi possível criar o crédito: %v", err)
+	}
+
+	creditTime := rejectedDebitTime.Add(time.Minute)
+
+	err = wallet.Credit(creditAmount, creditTime)
+
+	if err != nil {
+		t.Fatalf("o crédito deveria ser aceito: %v", err)
+	}
+
+	if wallet.Balance().MinorUnits() != 12500 {
+		t.Fatalf(
+			"esperava saldo final de 12500, recebeu %d",
+			wallet.Balance().MinorUnits(),
+		)
+	}
+
+	if wallet.Version() != 3 {
+		t.Fatalf("esperava versão final 3, recebeu %d", wallet.Version())
+	}
+
+	if !wallet.UpdateDate().Equal(creditTime) {
+		t.Fatal("o crédito não atualizou a data corretamente")
+	}
+
+	if !wallet.CreateDate().Equal(creationTime) {
+		t.Fatal("as operações alteraram a data de criação")
+	}
+
+	if wallet.Currency() != "BRL" {
+		t.Fatal("as operações alteraram a moeda da carteira")
+	}
+
+	t.Logf(
+		"Crédito de 5000: saldo %d centavos | versão %d",
+		wallet.Balance().MinorUnits(),
+		wallet.Version(),
+	)
 }

@@ -12,6 +12,8 @@ var ErrInvalidWalletTime = errors.New("data da carteira inválida")
 var ErrInvalidWallet = errors.New("carteira não inicializada ou inválida")
 var ErrNegativeCredit = errors.New("valor do crédito não pode ser negativo")
 var ErrWalletVersionOverflow = errors.New("versão da carteira atingiu o limite")
+var ErrNegativeDebit = errors.New("valor do débito não pode ser negativo")
+var ErrInsufficientBalance = errors.New("saldo insuficiente")
 
 // Erros referentes a Money
 var ErrInvalidAmount = errors.New("valor monetário inválido")

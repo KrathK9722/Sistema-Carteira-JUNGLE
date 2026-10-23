@@ -145,7 +145,7 @@ func (wallet Wallet) Validate() error {
 // Adiciona dinheiro ao saldo.
 // Crédito zero não altera saldo, versão ou data.
 // Qualquer erro preserva o estado anterior da carteira.
-func (wallet *Wallet) Credit(amount Money, updatedAt time.Time) error {
+func (wallet *Wallet) Credit(amount Money, updateDate time.Time) error {
 	if wallet == nil {
 		return ErrInvalidWallet
 	}
@@ -170,11 +170,11 @@ func (wallet *Wallet) Credit(amount Money, updatedAt time.Time) error {
 		return ErrCurrencyMismatch
 	}
 
-	if updatedAt.IsZero() {
+	if updateDate.IsZero() {
 		return ErrInvalidWalletTime
 	}
 
-	if updatedAt.Before(wallet.updateDate) {
+	if updateDate.Before(wallet.updateDate) {
 		return ErrInvalidWalletTime
 	}
 
@@ -194,7 +194,74 @@ func (wallet *Wallet) Credit(amount Money, updatedAt time.Time) error {
 
 	wallet.balance = newBalance
 	wallet.version = wallet.version + 1
-	wallet.updateDate = updatedAt.UTC()
+	wallet.updateDate = updateDate.UTC()
+
+	return nil
+}
+
+// Retira dinheiro sem permitir saldo negativo.
+// Débito zero não altera saldo, versão ou data.
+// Qualquer erro mantem o estado anterior da carteira.
+func (wallet *Wallet) Debit(amount Money, updateDate time.Time) error {
+	if wallet == nil {
+		return ErrInvalidWallet
+	}
+
+	err := wallet.Validate()
+
+	if err != nil {
+		return err
+	}
+
+	err = amount.Validate()
+
+	if err != nil {
+		return err
+	}
+
+	if amount.MinorUnits() < 0 {
+		return ErrNegativeDebit
+	}
+
+	if amount.Currency() != wallet.Currency() {
+		return ErrCurrencyMismatch
+	}
+
+	if updateDate.IsZero() {
+		return ErrInvalidWalletTime
+	}
+
+	if updateDate.Before(wallet.updateDate) {
+		return ErrInvalidWalletTime
+	}
+
+	if amount.MinorUnits() == 0 {
+		return nil
+	}
+
+	comparison, err := wallet.balance.Compare(amount)
+
+	if err != nil {
+		return err
+	}
+
+	if comparison < 0 {
+		return ErrInsufficientBalance
+	}
+
+	if wallet.version == math.MaxInt64 {
+		return ErrWalletVersionOverflow
+	}
+
+	newBalance, err := wallet.balance.Subtract(amount)
+
+	if err != nil {
+		return err
+	}
+
+	wallet.balance = newBalance
+	wallet.version = wallet.version + 1
+	wallet.updateDate = updateDate.UTC()
 
 	return nil
 }
