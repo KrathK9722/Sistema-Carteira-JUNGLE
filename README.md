@@ -267,7 +267,7 @@ Exporte as variáveis de `.env.example` antes de `go run ./cmd/server`.
 | `AWS_REGION` | `us-east-1` |
 | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | `test`, exclusivamente para execução local |
 | `SQS_ENDPOINT` | `http://localhost:4566` |
-| `SQS_QUEUE_URL`, `SQS_EVENTS_URL` | Se ausentes, descobertas no provisionamento |
+| `SQS_QUEUE_URL`, `SQS_EVENTS_URL`, `SQS_DLQ_URL` | Se as três forem fornecidas, usa filas pré-provisionadas sem CreateQueue; caso contrário, provisiona o ambiente local |
 | `SQS_PROVIDER_SENDERS` | Mapeamento opcional de identidades autenticadas pelo broker |
 
 ## Encerrar

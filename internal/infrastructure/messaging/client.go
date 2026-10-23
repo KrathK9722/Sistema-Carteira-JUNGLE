@@ -22,9 +22,13 @@ type Client struct {
 func NewClient(config configuration.Config) *Client {
 	sdkConfig := aws.Config{Region: config.AWSRegion, Credentials: credentials.NewStaticCredentialsProvider(config.AWSKey, config.AWSSecret, "")}
 	options := sqs.Options{Region: sdkConfig.Region, Credentials: sdkConfig.Credentials, BaseEndpoint: aws.String(config.SQSEndpoint)}
-	return &Client{API: sqs.New(options), QueueURL: config.QueueURL, EventsURL: config.EventsURL}
+	return &Client{API: sqs.New(options), QueueURL: config.QueueURL, EventsURL: config.EventsURL, DLQURL: config.DLQURL}
 }
 func (client *Client) Ensure(ctx context.Context) error {
+	// Pre-provisioned queues allow runtime credentials without CreateQueue rights.
+	if client.QueueURL != "" && client.EventsURL != "" && client.DLQURL != "" {
+		return client.Ready(ctx)
+	}
 	dlq, err := client.API.CreateQueue(ctx, &sqs.CreateQueueInput{QueueName: aws.String("wager-transactions-dlq.fifo"), Attributes: map[string]string{"FifoQueue": "true"}})
 	if err != nil {
 		return err

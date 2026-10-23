@@ -147,9 +147,11 @@ Uma única consulta SQL usa uma visão MVCC consistente para saldo e soma do led
 incluindo abertura. Soma e diferença usam NUMERIC no banco para evitar overflow do
 acumulador; resposta decimal exata sem converter para float. Não altera saldo.
 Divergências aparecem na resposta, log JSON e métrica. Logs financeiros contêm
-identificadores e status, não payloads completos. Há métricas HTTP básicas e health
-checks de PostgreSQL/SQS. Métricas avançadas de DLQ, latência e atraso da outbox
-ainda são uma pendência, assim como tracing opcional.
+identificadores e status, não payloads completos. Métricas incluem resultados,
+duplicatas, retries por origem, duração acumulada/contagem de processamento,
+profundidade aproximada da DLQ, quantidade/idade da outbox e divergências.
+Contadores em memória reiniciam com o processo; métricas da outbox são consultadas
+do banco. Histograma de latência, conflito específico de lock e tracing são pendências.
 
 ## Fx e testes
 
@@ -168,7 +170,7 @@ teste adicionalmente à integração real com o Keycloak.
 - Credenciais locais/IAM real e TLS de produção não estão prontos para deploy público.
 - Envelope SQS local exige token adicional; consumidores que usam exatamente o
   envelope original precisam do mapeamento SenderId e broker IAM configurados.
-- Métricas cobrem apenas parte da lista solicitada; não há dashboards/tracing.
+- Não há histograma de latência, métrica específica de conflito de lock, dashboards ou tracing.
 - Falhas transitórias são retentadas, mas não classificadas automaticamente como
   FAILED permanente no banco; o broker pode encaminhá-las à DLQ.
 - Testes não esgotam todas as combinações de referências/reversões, todas as janelas

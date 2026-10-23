@@ -1,0 +1,22 @@
+{
+ "Version":"2012-10-17",
+ "Statement":[
+  {
+   "Sid":"OnlyNamedProvidersCanProduce",
+   "Effect":"Deny",
+   "Principal":"*",
+   "Action":"sqs:SendMessage",
+   "Resource":"arn:aws:sqs:us-east-1:ACCOUNT_ID:wager-transactions.fifo",
+   "Condition":{"ArnNotEquals":{"aws:PrincipalArn":["arn:aws:iam::ACCOUNT_ID:user/provider-a","arn:aws:iam::ACCOUNT_ID:user/provider-b"]}}
+  },
+  {
+   "Sid":"OnlyWorkerCanConsume",
+   "Effect":"Deny",
+   "Principal":"*",
+   "Action":["sqs:ReceiveMessage","sqs:DeleteMessage","sqs:ChangeMessageVisibility"],
+   "Resource":"arn:aws:sqs:us-east-1:ACCOUNT_ID:wager-transactions.fifo",
+   "Condition":{"ArnNotEquals":{"aws:PrincipalArn":"arn:aws:iam::ACCOUNT_ID:role/financial-worker"}}
+  },
+  {"Sid":"RequireTLS","Effect":"Deny","Principal":"*","Action":"sqs:*","Resource":"arn:aws:sqs:us-east-1:ACCOUNT_ID:wager-transactions.fifo","Condition":{"Bool":{"aws:SecureTransport":"false"}}}
+ ]
+}
