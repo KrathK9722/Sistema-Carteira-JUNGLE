@@ -361,3 +361,317 @@ func TestNewWalletWithSpacesAroundPlayerID(t *testing.T) {
 
 	t.Log("O identificador do jogador com espaços nas extremidades foi rejeitado.")
 }
+
+func TestWalletCreditWithValidAmount(t *testing.T) {
+	registerTestSummary(t)
+
+	initialBalance, err := NewMoney("100.00", "BRL")
+
+	if err != nil {
+		t.Fatalf("não foi possível criar o saldo inicial: %v", err)
+	}
+
+	creationTime := time.Date(
+		2026,
+		time.October,
+		23,
+		12,
+		0,
+		0,
+		0,
+		time.UTC,
+	)
+
+	wallet, err := NewWallet(
+		"wallet-473",
+		"player-586",
+		initialBalance,
+		creationTime,
+	)
+
+	if err != nil {
+		t.Fatalf("não foi possível criar a carteira: %v", err)
+	}
+
+	creditAmount, err := NewMoney("25.00", "BRL")
+
+	if err != nil {
+		t.Fatalf("não foi possível criar o crédito: %v", err)
+	}
+
+	updateTime := creationTime.Add(time.Minute)
+
+	err = wallet.Credit(creditAmount, updateTime)
+
+	if err != nil {
+		t.Fatalf("não foi possível creditar a carteira: %v", err)
+	}
+
+	if wallet.Balance().MinorUnits() != 12500 {
+		t.Errorf(
+			"esperava saldo de 12500 centavos, recebeu %d",
+			wallet.Balance().MinorUnits(),
+		)
+	}
+
+	if wallet.Version() != 2 {
+		t.Errorf(
+			"esperava versão 2, recebeu %d",
+			wallet.Version(),
+		)
+	}
+
+	if !wallet.UpdateDate().Equal(updateTime) {
+		t.Error("a data de atualização não foi alterada corretamente")
+	}
+
+	if !wallet.CreateDate().Equal(creationTime) {
+		t.Error("o crédito alterou a data de criação")
+	}
+
+	t.Logf(
+		"Carteira: %s | Jogador: %s | Moeda: %s",
+		wallet.ID(),
+		wallet.PlayerID(),
+		wallet.Currency(),
+	)
+
+	t.Logf(
+		"Saldo: %d + Crédito: %d centavos = Saldo Final: %d centavos",
+		initialBalance.MinorUnits(),
+		creditAmount.MinorUnits(),
+		wallet.Balance().MinorUnits(),
+	)
+
+	t.Logf(
+		"Versão: 1 → %d",
+		wallet.Version(),
+	)
+
+	t.Logf(
+		"Data de atualização: %s → %s",
+		creationTime.Format(time.RFC3339),
+		wallet.UpdateDate().Format(time.RFC3339),
+	)
+}
+
+func TestWalletCreditWithDifferentCurrency(t *testing.T) {
+	registerTestSummary(t)
+
+	initialBalance, err := NewMoney("100.00", "BRL")
+
+	if err != nil {
+		t.Fatalf("não foi possível criar o saldo inicial: %v", err)
+	}
+
+	creationTime := time.Date(
+		2026,
+		time.October,
+		23,
+		12,
+		0,
+		0,
+		0,
+		time.UTC,
+	)
+
+	wallet, err := NewWallet(
+		"wallet-473",
+		"player-586",
+		initialBalance,
+		creationTime,
+	)
+
+	if err != nil {
+		t.Fatalf("não foi possível criar a carteira: %v", err)
+	}
+
+	creditAmount, err := NewMoney("25.00", "USD")
+
+	if err != nil {
+		t.Fatalf("não foi possível criar o crédito: %v", err)
+	}
+
+	balanceBefore := wallet.Balance()
+	versionBefore := wallet.Version()
+	updateDateBefore := wallet.UpdateDate()
+
+	updateTime := creationTime.Add(time.Minute)
+
+	err = wallet.Credit(creditAmount, updateTime)
+
+	if !errors.Is(err, ErrCurrencyMismatch) {
+		t.Fatalf(
+			"esperava ErrCurrencyMismatch, mas recebeu: %v",
+			err,
+		)
+	}
+
+	if wallet.Balance().MinorUnits() != balanceBefore.MinorUnits() {
+		t.Error("o crédito rejeitado alterou o saldo")
+	}
+
+	if wallet.Currency() != balanceBefore.Currency() {
+		t.Error("o crédito rejeitado alterou a moeda")
+	}
+
+	if wallet.Version() != versionBefore {
+		t.Error("o crédito rejeitado alterou a versão")
+	}
+
+	if !wallet.UpdateDate().Equal(updateDateBefore) {
+		t.Error("o crédito rejeitado alterou a data de atualização")
+	}
+
+	t.Logf(
+		"Crédito em %s rejeitado. Saldo preservado: %d centavos em %s. Versão: %d.",
+		creditAmount.Currency(),
+		wallet.Balance().MinorUnits(),
+		wallet.Currency(),
+		wallet.Version(),
+	)
+}
+
+func TestWalletCreditWithZeroAmount(t *testing.T) {
+	registerTestSummary(t)
+
+	initialBalance, err := NewMoney("100.00", "BRL")
+
+	if err != nil {
+		t.Fatalf("não foi possível criar o saldo inicial: %v", err)
+	}
+
+	creationTime := time.Date(
+		2026,
+		time.October,
+		23,
+		12,
+		0,
+		0,
+		0,
+		time.UTC,
+	)
+
+	wallet, err := NewWallet(
+		"wallet-473",
+		"player-586",
+		initialBalance,
+		creationTime,
+	)
+
+	if err != nil {
+		t.Fatalf("não foi possível criar a carteira: %v", err)
+	}
+
+	creditAmount, err := ZeroMoney("BRL")
+
+	if err != nil {
+		t.Fatalf("não foi possível criar o crédito zero: %v", err)
+	}
+
+	balanceBefore := wallet.Balance()
+	versionBefore := wallet.Version()
+	updateDateBefore := wallet.UpdateDate()
+
+	updateTime := creationTime.Add(time.Minute)
+
+	err = wallet.Credit(creditAmount, updateTime)
+
+	if err != nil {
+		t.Fatalf("crédito zero deveria ser aceito: %v", err)
+	}
+
+	if wallet.Balance().MinorUnits() != balanceBefore.MinorUnits() {
+		t.Error("o crédito zero alterou o saldo")
+	}
+
+	if wallet.Currency() != balanceBefore.Currency() {
+		t.Error("o crédito zero alterou a moeda")
+	}
+
+	if wallet.Version() != versionBefore {
+		t.Error("o crédito zero alterou a versão")
+	}
+
+	if !wallet.UpdateDate().Equal(updateDateBefore) {
+		t.Error("o crédito zero alterou a data de atualização")
+	}
+
+	if !t.Failed() {
+		t.Logf(
+			"Crédito zero aceito sem alterações. Saldo: %d centavos. Versão: %d.",
+			wallet.Balance().MinorUnits(),
+			wallet.Version(),
+		)
+	}
+}
+
+func TestWalletNegativeCredit(t *testing.T) {
+	registerTestSummary(t)
+
+	initialBalance, err := NewMoney("100.00", "BRL")
+
+	if err != nil {
+		t.Fatalf("não foi possível criar o saldo iniciar: %v", err)
+	}
+
+	creationTime := time.Date(
+		2026,
+		time.October,
+		23,
+		12,
+		0,
+		0,
+		0,
+		time.UTC,
+	)
+
+	wallet, err := NewWallet(
+		"wallet-986",
+		"player-654",
+		initialBalance,
+		creationTime,
+	)
+
+	if err != nil {
+		t.Fatalf("não foi possível criar a carteira: %v", err)
+	}
+
+	creditAmount := Money{
+		minorUnits: -100,
+		currency:   "BRL",
+	}
+
+	if err != nil {
+		t.Fatalf("não foi possível criar o crédito zero: %v", err)
+	}
+
+	balanceBefore := wallet.Balance()
+	versionBefore := wallet.Version()
+	updateDateBefore := wallet.UpdateDate()
+
+	updateTime := creationTime.Add(time.Minute)
+
+	err = wallet.Credit(creditAmount, updateTime)
+
+	if err != ErrNegativeCredit {
+		t.Errorf("erro devia retornar ErrNegativeCredit mas retornou %v", err)
+	}
+
+	if wallet.Balance().MinorUnits() != balanceBefore.MinorUnits() {
+		t.Error("o crédito negativo alterou o saldo")
+	}
+
+	if wallet.Version() != versionBefore {
+		t.Error("o crédito negativo alterou a versão")
+	}
+
+	if !wallet.UpdateDate().Equal(updateDateBefore) {
+		t.Error("o crédito negativo alterou a data de atualização")
+	}
+
+	if err != nil {
+		t.Log("Crédito negativo negado")
+	}
+
+}

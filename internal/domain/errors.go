@@ -9,6 +9,9 @@ var ErrInvalidWalletID = errors.New("identificador da carteira inválido")
 var ErrInvalidPlayerID = errors.New("identificador do jogador inválido")
 var ErrNegativeInitialBalance = errors.New("saldo inicial não pode ser negativo")
 var ErrInvalidWalletTime = errors.New("data da carteira inválida")
+var ErrInvalidWallet = errors.New("carteira não inicializada ou inválida")
+var ErrNegativeCredit = errors.New("valor do crédito não pode ser negativo")
+var ErrWalletVersionOverflow = errors.New("versão da carteira atingiu o limite")
 
 // Erros referentes a Money
 var ErrInvalidAmount = errors.New("valor monetário inválido")
