@@ -2,6 +2,7 @@ package domain
 
 import (
 	"errors"
+	"math"
 	"strconv"
 	"strings"
 )
@@ -11,6 +12,7 @@ var ErrInvalidAmount = errors.New("valor monetário inválido")
 var ErrInvalidCurrency = errors.New("moeda inválida")
 var ErrAmountOutOfRange = errors.New("valor monetário fora do limite permitido")
 var ErrInvalidMoney = errors.New("valor monetário não inicializado ou inválido")
+var ErrCurrencyMismatch = errors.New("não é possível operar valores de moedas diferentes")
 
 // Notas pessoais:
 // Os campos são privados porque começam com letra minúscula.
@@ -123,4 +125,87 @@ func ZeroMoney(currency string) (Money, error) {
 	}
 
 	return money, nil
+}
+
+// Os valores originais não são alterados.
+// O resultado é retornado em um novo Money.
+func (money Money) Add(other Money) (Money, error) {
+	err := money.Validate()
+
+	if err != nil {
+		return Money{}, err
+	}
+
+	err = other.Validate()
+
+	if err != nil {
+		return Money{}, err
+	}
+
+	if money.currency != other.currency {
+		return Money{}, ErrCurrencyMismatch
+	}
+
+	if other.minorUnits > 0 {
+		if money.minorUnits > math.MaxInt64-other.minorUnits {
+			return Money{}, ErrAmountOutOfRange
+		}
+	}
+
+	if other.minorUnits < 0 {
+		if money.minorUnits < math.MinInt64-other.minorUnits {
+			return Money{}, ErrAmountOutOfRange
+		}
+	}
+
+	total := money.minorUnits + other.minorUnits
+
+	result := Money{
+		minorUnits: total,
+		currency:   money.currency,
+	}
+
+	return result, nil
+}
+
+// Subtrai outro valor monetário sem alterar os valores originais.
+func (money Money) Subtract(other Money) (Money, error) {
+	err := money.Validate()
+
+	if err != nil {
+		return Money{}, err
+	}
+
+	err = other.Validate()
+
+	if err != nil {
+		return Money{}, err
+	}
+
+	if money.currency != other.currency {
+		return Money{}, ErrCurrencyMismatch
+	}
+
+	// Subtrair um valor positivo pode ultrapassar o limite negativo.
+	if other.minorUnits > 0 {
+		if money.minorUnits < math.MinInt64+other.minorUnits {
+			return Money{}, ErrAmountOutOfRange
+		}
+	}
+
+	// Subtrair um valor negativo pode ultrapassar o limite positivo.
+	if other.minorUnits < 0 {
+		if money.minorUnits > math.MaxInt64+other.minorUnits {
+			return Money{}, ErrAmountOutOfRange
+		}
+	}
+
+	difference := money.minorUnits - other.minorUnits
+
+	result := Money{
+		minorUnits: difference,
+		currency:   money.currency,
+	}
+
+	return result, nil
 }
