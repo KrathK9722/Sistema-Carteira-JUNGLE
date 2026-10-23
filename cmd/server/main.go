@@ -1,25 +1,14 @@
 package main
 
 import (
-	"log"
-	"net/http"
+	"example.com/financial-service/internal/composition"
+	"go.uber.org/fx"
+	"log/slog"
+	"os"
 	"time"
 )
 
 func main() {
-	router := http.NewServeMux()
-	router.HandleFunc("GET /health/live", func(responseWriter http.ResponseWriter, request *http.Request) {
-		responseWriter.Header().Set("Content-Type", "application/json")
-		_, writeError := responseWriter.Write([]byte(`{"status":"running"}`))
-		if writeError != nil {
-			log.Printf("Erro ao escrever resposta: %v", writeError)
-		}
-	})
-	server := &http.Server{
-		Addr:              ":8080",
-		Handler:           router,
-		ReadHeaderTimeout: 5 * time.Second,
-	}
-	log.Println("Servidor: http://localhost:8080/health/live")
-	log.Fatal(server.ListenAndServe())
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
+	fx.New(composition.Module, fx.StartTimeout(60*time.Second), fx.StopTimeout(30*time.Second)).Run()
 }

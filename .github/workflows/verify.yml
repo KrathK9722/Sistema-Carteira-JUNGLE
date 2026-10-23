@@ -1,0 +1,20 @@
+name: Verify financial service
+on: [push, pull_request, workflow_dispatch]
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: go test -race ./...
+      - run: go vet ./...
+      - run: docker compose --profile multi up --build -d --wait --wait-timeout 240
+      - run: go test -race -tags integration -count=1 -v ./tests/integration
+      - if: always()
+        run: docker compose --profile multi logs --no-color
+      - if: always()
+        run: docker compose --profile multi down -v
