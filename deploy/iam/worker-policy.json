@@ -1,0 +1,8 @@
+{
+ "Version":"2012-10-17",
+ "Statement":[
+  {"Effect":"Allow","Action":["sqs:ReceiveMessage","sqs:DeleteMessage","sqs:ChangeMessageVisibility","sqs:GetQueueAttributes","sqs:GetQueueUrl"],"Resource":"arn:aws:sqs:us-east-1:ACCOUNT_ID:wager-transactions.fifo"},
+  {"Effect":"Allow","Action":["sqs:SendMessage","sqs:GetQueueAttributes","sqs:GetQueueUrl"],"Resource":"arn:aws:sqs:us-east-1:ACCOUNT_ID:wallet-events.fifo"},
+  {"Effect":"Allow","Action":["sqs:GetQueueAttributes","sqs:GetQueueUrl"],"Resource":"arn:aws:sqs:us-east-1:ACCOUNT_ID:wager-transactions-dlq.fifo"}
+ ]
+}

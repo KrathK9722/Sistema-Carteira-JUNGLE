@@ -1,0 +1,123 @@
+package domain
+
+import (
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"strings"
+	"time"
+)
+
+var ErrConflict = errors.New("conflict")
+var ErrNotFound = errors.New("not_found")
+var ErrForbidden = errors.New("forbidden")
+var ErrInvalidOperation = errors.New("invalid_operation")
+
+// MoneyInput preserves decimal text at every external boundary.
+type MoneyInput struct {
+	Amount   string `json:"amount"`
+	Currency string `json:"currency"`
+}
+type Operation struct {
+	ProviderID     string     `json:"providerId"`
+	ExternalID     string     `json:"externalTransactionId"`
+	IdempotencyKey string     `json:"-"`
+	PlayerID       string     `json:"playerId"`
+	WalletID       string     `json:"walletId"`
+	RoundID        string     `json:"roundId"`
+	GameID         string     `json:"gameId"`
+	Kind           string     `json:"kind"`
+	Money          MoneyInput `json:"money"`
+	Reference      string     `json:"referenceExternalTransactionId,omitempty"`
+}
+
+func (operation *Operation) Normalize() error {
+	if operation == nil {
+		return ErrInvalidOperation
+	}
+	if operation.Reference != "" && operation.Reference == operation.ExternalID {
+		return ErrInvalidOperation
+	}
+	fields := []string{operation.ProviderID, operation.ExternalID, operation.IdempotencyKey, operation.PlayerID, operation.WalletID, operation.RoundID, operation.GameID}
+	for _, value := range fields {
+		if value == "" || strings.TrimSpace(value) != value || len(value) > 256 {
+			return ErrInvalidOperation
+		}
+	}
+	if strings.TrimSpace(operation.Reference) != operation.Reference || len(operation.Reference) > 256 {
+		return ErrInvalidOperation
+	}
+	money, err := NewMoney(operation.Money.Amount, operation.Money.Currency)
+	if err != nil {
+		return err
+	}
+	switch operation.Kind {
+	case "BET", "WIN", "REFUND", "ROLLBACK":
+		if money.MinorUnits() <= 0 {
+			return ErrInvalidAmount
+		}
+	case "LOSS":
+		if money.MinorUnits() != 0 {
+			return ErrInvalidAmount
+		}
+	default:
+		return ErrInvalidOperation
+	}
+	if (operation.Kind == "REFUND" || operation.Kind == "ROLLBACK") && operation.Reference == "" {
+		return ErrInvalidOperation
+	}
+	if (operation.Kind == "BET" || operation.Kind == "LOSS") && operation.Reference != "" {
+		return ErrInvalidOperation
+	}
+	operation.Money.Amount, err = money.Amount()
+	return err
+}
+
+// PayloadHash uses an ordered JSON object. All its values are strings or ordered
+// objects with string values; encoding/json sorts map keys deterministically.
+func (operation Operation) PayloadHash() (string, error) {
+	data := map[string]any{"providerId": operation.ProviderID, "externalTransactionId": operation.ExternalID, "playerId": operation.PlayerID, "walletId": operation.WalletID, "roundId": operation.RoundID, "gameId": operation.GameID, "kind": operation.Kind, "money": map[string]string{"amount": operation.Money.Amount, "currency": operation.Money.Currency}, "referenceExternalTransactionId": operation.Reference}
+	raw, err := json.Marshal(data)
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(raw)
+	return hex.EncodeToString(sum[:]), nil
+}
+func NewID() (string, error) {
+	var value [16]byte
+	_, err := rand.Read(value[:])
+	if err != nil {
+		return "", err
+	}
+	value[6] = (value[6] & 15) | 64
+	value[8] = (value[8] & 63) | 128
+	return fmt.Sprintf("%x-%x-%x-%x-%x", value[0:4], value[4:6], value[6:8], value[8:10], value[10:16]), nil
+}
+func RehydrateWallet(id, player string, balance Money, version int64, created, updated time.Time) (Wallet, error) {
+	wallet := Wallet{id: id, playerID: player, balance: balance, version: version, createDate: created.UTC(), updateDate: updated.UTC()}
+	err := wallet.Validate()
+	return wallet, err
+}
+
+type Result struct {
+	TransactionID    string     `json:"transactionId"`
+	Status           string     `json:"status"`
+	Balance          MoneyInput `json:"balance"`
+	FailureCode      string     `json:"failureCode,omitempty"`
+	IdempotentReplay bool       `json:"idempotentReplay"`
+}
+type WalletView struct {
+	ID       string     `json:"id"`
+	PlayerID string     `json:"playerId"`
+	Balance  MoneyInput `json:"balance"`
+	Version  int64      `json:"version"`
+}
+
+func View(wallet Wallet) (WalletView, error) {
+	amount, err := wallet.Balance().Amount()
+	return WalletView{wallet.ID(), wallet.PlayerID(), MoneyInput{amount, wallet.Currency()}, wallet.Version()}, err
+}
