@@ -209,3 +209,23 @@ func (money Money) Subtract(other Money) (Money, error) {
 
 	return result, nil
 }
+
+// Inverte o sinal sem alterar o valor original.
+func (money Money) Negate() (Money, error) {
+	err := money.Validate()
+
+	if err != nil {
+		return Money{}, err
+	}
+
+	if money.minorUnits == math.MinInt64 {
+		return Money{}, ErrAmountOutOfRange
+	}
+
+	result := Money{
+		minorUnits: -money.minorUnits,
+		currency:   money.currency,
+	}
+
+	return result, nil
+}

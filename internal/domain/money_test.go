@@ -2,6 +2,7 @@ package domain
 
 import (
 	"errors"
+	"math"
 	"testing"
 )
 
@@ -456,4 +457,133 @@ func TestMoneySubtractWithUninitializedArgument(t *testing.T) {
 	}
 
 	t.Log("A subtração rejeitou o valor não inicializado.")
+}
+
+func TestMoneyNegateWithPositiveAmount(t *testing.T) {
+	registerTestSummary(t)
+
+	money, err := NewMoney("25.50", "BRL")
+
+	if err != nil {
+		t.Fatalf("não foi possível criar o valor: %v", err)
+	}
+
+	result, err := money.Negate()
+
+	if err != nil {
+		t.Fatalf("não foi possível inverter o sinal: %v", err)
+	}
+
+	if result.MinorUnits() != -2550 {
+		t.Fatalf(
+			"esperava $-25.50 BRL, mas recebeu: $%d.%02d BRL",
+			result.MinorUnits()/100,
+			result.MinorUnits()%100,
+		)
+	}
+
+	if result.Currency() != "BRL" {
+		t.Fatalf(
+			"esperava moeda BRL, mas recebeu: %s",
+			result.Currency(),
+		)
+	}
+
+	if money.MinorUnits() != 2550 {
+		t.Fatal("a negação alterou o valor original")
+	}
+
+	t.Log("O valor positivo foi convertido em negativo sem alterar o original.")
+}
+
+func TestMoneyNegateWithNegativeAmount(t *testing.T) {
+	registerTestSummary(t)
+
+	money := Money{
+		minorUnits: -2550,
+		currency:   "BRL",
+	}
+
+	result, err := money.Negate()
+
+	if err != nil {
+		t.Fatalf("não foi possível inverter o sinal: %v", err)
+	}
+
+	if result.MinorUnits() != 2550 {
+		t.Fatalf(
+			"esperava $25.50 BRL, mas recebeu: $%d.%02d RL.",
+			result.MinorUnits()/100,
+			result.MinorUnits()%100,
+		)
+	}
+
+	if money.MinorUnits() != -2550 {
+		t.Fatal("a negação alterou o valor original")
+	}
+
+	t.Log("O valor negativo foi convertido em positivo.")
+}
+
+func TestMoneyNegateWithZero(t *testing.T) {
+	registerTestSummary(t)
+
+	money, err := ZeroMoney("BRL")
+
+	if err != nil {
+		t.Fatalf("não foi possível criar zero: %v", err)
+	}
+
+	result, err := money.Negate()
+
+	if err != nil {
+		t.Fatalf("não foi possível inverter o sinal de zero: %v", err)
+	}
+
+	if result.MinorUnits() != 0 {
+		t.Fatalf(
+			"esperava $0.00 BRL, mas recebeu: $%d.%02d.",
+			result.MinorUnits()/100,
+			result.MinorUnits()%100,
+		)
+	}
+
+	t.Log("A negação de zero retornou zero.")
+}
+
+func TestMoneyNegateWithUninitializedValue(t *testing.T) {
+	registerTestSummary(t)
+
+	var money Money
+
+	_, err := money.Negate()
+
+	if !errors.Is(err, ErrInvalidMoney) {
+		t.Fatalf(
+			"esperava ErrInvalidMoney, mas recebeu: %v",
+			err,
+		)
+	}
+
+	t.Log("A negação rejeitou o valor não inicializado.")
+}
+
+func TestMoneyNegateWithMinimumInt64(t *testing.T) {
+	registerTestSummary(t)
+
+	money := Money{
+		minorUnits: math.MinInt64,
+		currency:   "BRL",
+	}
+
+	_, err := money.Negate()
+
+	if !errors.Is(err, ErrAmountOutOfRange) {
+		t.Fatalf(
+			"esperava ErrAmountOutOfRange, mas recebeu: %v",
+			err,
+		)
+	}
+
+	t.Log("A negação do menor int64 foi rejeitada para evitar overflow.")
 }
