@@ -2,18 +2,10 @@ package domain
 
 import (
 	"encoding/json"
-	"errors"
 	"math"
 	"strconv"
 	"strings"
 )
-
-// Erros que podem ser retornados ao criar um valor monetário.
-var ErrInvalidAmount = errors.New("valor monetário inválido")
-var ErrInvalidCurrency = errors.New("moeda inválida")
-var ErrAmountOutOfRange = errors.New("valor monetário fora do limite permitido")
-var ErrInvalidMoney = errors.New("valor monetário não inicializado ou inválido")
-var ErrCurrencyMismatch = errors.New("não é possível operar valores de moedas diferentes")
 
 // Notas pessoais:
 // Os campos são privados porque começam com letra minúscula.
