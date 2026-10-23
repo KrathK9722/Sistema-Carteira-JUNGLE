@@ -1,13 +1,18 @@
 package domain
 
-import ("errors" "strconv" "strings" )
+import (
+	"errors"
+	"strconv"
+	"strings"
+)
 
 // Erros que podem ser retornados ao criar um valor monetário.
 var ErrInvalidAmount = errors.New("valor monetário inválido")
 var ErrInvalidCurrency = errors.New("moeda inválida")
 var ErrAmountOutOfRange = errors.New("valor monetário fora do limite permitido")
+var ErrInvalidMoney = errors.New("valor monetário não inicializado ou inválido")
 
-// Notas pessoais: 
+// Notas pessoais:
 // Os campos são privados porque começam com letra minúscula.
 // Money representa um valor monetário.
 // minorUnits guarda o valor em centavos.
@@ -17,7 +22,6 @@ type Money struct {
 	minorUnits int64
 	currency   string
 }
-
 
 // NewMoney implementação e criação de um dinheiro:
 //   - a moeda aceita é BRL;
@@ -99,4 +103,24 @@ func (money Money) MinorUnits() int64 {
 // Currency retorna a moeda.
 func (money Money) Currency() string {
 	return money.currency
+}
+
+// Valores negativos não são rejeitados porque serão necessários em diferenças e cálculos internos.
+func (money Money) Validate() error {
+	if money.currency != "BRL" {
+		return ErrInvalidMoney
+	}
+
+	return nil
+}
+
+// Cria um valor zero para a moeda informada.
+func ZeroMoney(currency string) (Money, error) {
+	money, err := NewMoney("0.00", currency)
+
+	if err != nil {
+		return Money{}, err
+	}
+
+	return money, nil
 }
