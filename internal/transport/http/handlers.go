@@ -246,7 +246,19 @@ func (h *Handler) Metrics(writer http.ResponseWriter, request *http.Request) {
 	if !ok {
 		return
 	}
+	persisted, err := h.Service.Metrics(request.Context())
+	if err != nil {
+		h.failure(writer, err)
+		return
+	}
+	dlq, err := h.Queues.DLQDepth(request.Context())
+	if err != nil {
+		h.failure(writer, err)
+		return
+	}
 	writer.Header().Set("Content-Type", "text/plain; version=0.0.4")
+	fmt.Fprint(writer, persisted)
+	fmt.Fprintf(writer, "sqs_dlq_visible_messages %d\n", dlq)
 	fmt.Fprintf(writer, "wager_http_processed_total %d\nwager_http_rejected_total %d\nwager_http_replays_total %d\nwager_http_conflicts_total %d\nreconciliation_mismatches_total %d\n", h.processed.Load(), h.rejected.Load(), h.replays.Load(), h.conflicts.Load(), h.divergences.Load())
 }
 

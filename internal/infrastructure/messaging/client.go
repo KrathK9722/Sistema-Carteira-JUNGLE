@@ -10,11 +10,13 @@ import (
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
 	"github.com/aws/aws-sdk-go-v2/service/sqs/types"
+	"strconv"
 )
 
 type Client struct {
 	API                 *sqs.Client
 	QueueURL, EventsURL string
+	DLQURL              string
 }
 
 func NewClient(config configuration.Config) *Client {
@@ -27,6 +29,7 @@ func (client *Client) Ensure(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	client.DLQURL = aws.ToString(dlq.QueueUrl)
 	attrs, err := client.API.GetQueueAttributes(ctx, &sqs.GetQueueAttributesInput{QueueUrl: dlq.QueueUrl, AttributeNames: []types.QueueAttributeName{types.QueueAttributeNameQueueArn}})
 	if err != nil {
 		return err
@@ -69,4 +72,13 @@ func (client *Client) Publish(ctx context.Context, id, aggregate, payload string
 		return fmt.Errorf("publish outbox event: %w", err)
 	}
 	return nil
+}
+
+func (client *Client) DLQDepth(ctx context.Context) (int64, error) {
+	response, err := client.API.GetQueueAttributes(ctx, &sqs.GetQueueAttributesInput{QueueUrl: aws.String(client.DLQURL), AttributeNames: []types.QueueAttributeName{types.QueueAttributeNameApproximateNumberOfMessages}})
+	if err != nil {
+		return 0, err
+	}
+	value, err := strconv.ParseInt(response.Attributes["ApproximateNumberOfMessages"], 10, 64)
+	return value, err
 }

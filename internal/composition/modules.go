@@ -76,6 +76,9 @@ func AsStore(repository *postgres.Repository) application.Store { return reposit
 func RegisterQueues(lifecycle fx.Lifecycle, queues *messaging.Client) {
 	lifecycle.Append(fx.Hook{OnStart: queues.Ensure})
 }
+func RegisterIdentity(lifecycle fx.Lifecycle, auth *authentication.Validator) {
+	lifecycle.Append(fx.Hook{OnStart: auth.Ready})
+}
 func RegisterWorkers(lifecycle fx.Lifecycle, runner *workers.Runner) {
 	lifecycle.Append(fx.Hook{OnStart: runner.Start, OnStop: runner.Stop})
 }
@@ -118,4 +121,4 @@ func RegisterHTTP(lifecycle fx.Lifecycle, config configuration.Config, handler *
 	lifecycle.Append(fx.Hook{OnStart: server.Start, OnStop: server.Stop})
 }
 
-var Module = fx.Module("financial-service", fx.Provide(configuration.Load, NewPool, postgres.NewRepository, AsStore, application.NewService, authentication.NewValidator, messaging.NewClient, transport.NewHandler, workers.NewRunner), fx.Invoke(RegisterQueues, RegisterWorkers, RegisterHTTP))
+var Module = fx.Module("financial-service", fx.Provide(configuration.Load, NewPool, postgres.NewRepository, AsStore, application.NewService, authentication.NewValidator, messaging.NewClient, transport.NewHandler, workers.NewRunner), fx.Invoke(RegisterQueues, RegisterIdentity, RegisterWorkers, RegisterHTTP))

@@ -276,6 +276,24 @@ func TestRealDistributedFinancialFlows(t *testing.T) {
 	if queryCount(t, pool, `SELECT count(*) FROM wallet_ledger WHERE wallet_id=$1 AND direction='DEBIT'`, raceWallet.ID) != 1 {
 		t.Fatal("race produced duplicate debit")
 	}
+	// Different wallets must also progress concurrently across distinct processes.
+	independentA := createWallet(t, internal, "100.00")
+	independentB := createWallet(t, internal, "100.00")
+	aID, idErr := domain.NewID()
+	if idErr != nil {
+		t.Fatal(idErr)
+	}
+	bID, idErr := domain.NewID()
+	if idErr != nil {
+		t.Fatal(idErr)
+	}
+	for _, outcome := range parallel(provider, []domain.Operation{operation(independentA, aID, "BET", "30.00"), operation(independentB, bID, "BET", "30.00")}) {
+		if outcome.err != nil || outcome.status != 200 {
+			t.Fatalf("independent wallets failed: %d %s %v", outcome.status, outcome.body, outcome.err)
+		}
+	}
+	walletBalance(t, internal, independentA.ID, "70.00")
+	walletBalance(t, internal, independentB.ID, "70.00")
 	// LOSS does not alter version or ledger.
 	lossID, err := domain.NewID()
 	if err != nil {
@@ -333,6 +351,38 @@ func TestRealDistributedFinancialFlows(t *testing.T) {
 	if duplicateReversal.FailureCode != "ALREADY_REVERSED" {
 		t.Fatal("double reversal was not rejected")
 	}
+	// A refund itself can be rolled back, restoring the original debit.
+	refundRollbackID, idErr := domain.NewID()
+	if idErr != nil {
+		t.Fatal(idErr)
+	}
+	refundRollback := operation(pendingWallet, refundRollbackID, "ROLLBACK", "20.00")
+	refundRollback.Reference = refundID
+	send(t, provider, refundRollback, 200)
+	walletBalance(t, internal, pendingWallet.ID, "80.00")
+	// Reversing a spent WIN must use a distinct insufficient-balance code.
+	reversalWallet := createWallet(t, internal, "10.00")
+	winToReverseID, idErr := domain.NewID()
+	if idErr != nil {
+		t.Fatal(idErr)
+	}
+	send(t, provider, operation(reversalWallet, winToReverseID, "WIN", "20.00"), 200)
+	spendID, idErr := domain.NewID()
+	if idErr != nil {
+		t.Fatal(idErr)
+	}
+	send(t, provider, operation(reversalWallet, spendID, "BET", "25.00"), 200)
+	reverseSpentID, idErr := domain.NewID()
+	if idErr != nil {
+		t.Fatal(idErr)
+	}
+	reverseSpent := operation(reversalWallet, reverseSpentID, "ROLLBACK", "20.00")
+	reverseSpent.Reference = winToReverseID
+	rejectedReversal := send(t, provider, reverseSpent, 422)
+	if rejectedReversal.FailureCode != "REVERSAL_INSUFFICIENT_BALANCE" {
+		t.Fatal("reversal used incorrect failure code")
+	}
+	walletBalance(t, internal, reversalWallet.ID, "5.00")
 	// Database constraints and immutable ledger, using a real PostgreSQL connection.
 	_, err = pool.Exec(context.Background(), `UPDATE wallets SET balance=-1 WHERE id=$1`, wallet.ID)
 	if err == nil {
@@ -408,6 +458,10 @@ func TestRealDistributedFinancialFlows(t *testing.T) {
 	}
 	if queryCount(t, pool, `SELECT count(*) FROM outbox WHERE published_at IS NULL`) != 0 {
 		t.Fatal("outbox events were not published")
+	}
+	status, raw, err = request("GET", endpoints[0]+"/metrics", internal, "", nil)
+	if err != nil || status != 200 || !strings.Contains(string(raw), "outbox_pending_events") || !strings.Contains(string(raw), "sqs_dlq_visible_messages") {
+		t.Fatalf("metrics unavailable: %d %s %v", status, raw, err)
 	}
 	t.Log("real PostgreSQL, Keycloak, SQS and three independent API/worker instances verified")
 }

@@ -70,8 +70,11 @@ func waitTick(ctx context.Context, duration time.Duration) bool {
 func (r *Runner) publish(ctx context.Context) {
 	defer r.wait.Done()
 	for ctx.Err() == nil {
-		work, err := r.repository.PublishOne(ctx, r.queues)
+		workContext, cancel := context.WithTimeout(ctx, 15*time.Second)
+		work, err := r.repository.PublishOne(workContext, r.queues)
+		cancel()
 		if err != nil && !errors.Is(err, context.Canceled) {
+			r.service.RecordRetry("outbox")
 			slog.Warn("outbox retry", "error", err)
 		}
 		if !work || err != nil {
@@ -84,8 +87,11 @@ func (r *Runner) publish(ctx context.Context) {
 func (r *Runner) references(ctx context.Context) {
 	defer r.wait.Done()
 	for ctx.Err() == nil {
-		work, err := r.repository.ResumeOne(ctx)
+		workContext, cancel := context.WithTimeout(ctx, 15*time.Second)
+		work, err := r.repository.ResumeOne(workContext)
+		cancel()
 		if err != nil && !errors.Is(err, context.Canceled) {
+			r.service.RecordRetry("reference")
 			slog.Warn("reference retry", "error", err)
 		}
 		if !work || err != nil {
@@ -172,6 +178,7 @@ func (r *Runner) consume(ctx context.Context) {
 					slog.Warn("sqs delete retry", "error", err)
 				}
 			} else {
+				r.service.RecordRetry("sqs")
 				attempt, _ := strconv.Atoi(message.Attributes["ApproximateReceiveCount"])
 				if attempt < 1 {
 					attempt = 1

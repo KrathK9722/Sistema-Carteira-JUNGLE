@@ -416,6 +416,15 @@ type Publisher interface {
 	Publish(context.Context, string, string, string) error
 }
 
+func (r *Repository) Metrics(ctx context.Context) (string, error) {
+	var pending, age, retries int64
+	err := r.Pool.QueryRow(ctx, `SELECT count(*) FILTER(WHERE published_at IS NULL),COALESCE(max(EXTRACT(EPOCH FROM now()-occurred_at)) FILTER(WHERE published_at IS NULL),0)::bigint,COALESCE(sum(GREATEST(attempts-1,0)),0)::bigint FROM outbox`).Scan(&pending, &age, &retries)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("outbox_pending_events %d\noutbox_oldest_pending_seconds %d\noutbox_persisted_retries_total %d\n", pending, age, retries), nil
+}
+
 func (r *Repository) PublishOne(ctx context.Context, publisher Publisher) (bool, error) {
 	tx, err := r.Pool.Begin(ctx)
 	if err != nil {
