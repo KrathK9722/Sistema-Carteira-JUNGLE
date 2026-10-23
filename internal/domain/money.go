@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"encoding/json"
 	"errors"
 	"math"
 	"strconv"
@@ -26,14 +27,15 @@ type Money struct {
 }
 
 // NewMoney implementação e criação de um dinheiro:
-//   - a moeda aceita é BRL;
+//   - as moedas aceitas são BRL e USD;
+//   - zeros à esquerda são aceitos e normalizados por Amount;
 //   - o valor precisa ter exatamente duas casas decimais;
 //   - valores negativos não são aceitos neste construtor;
 //   - espaços, sinais e notação científica são rejeitados.
 //
 // Exemplos válidos: "0.00", "10.50" e "1000.00".
 func NewMoney(amount string, currency string) (Money, error) {
-	if currency != "BRL" {
+	if !isSupportedCurrency(currency) {
 		return Money{}, ErrInvalidCurrency
 	}
 
@@ -107,9 +109,10 @@ func (money Money) Currency() string {
 	return money.currency
 }
 
-// Valores negativos não são rejeitados porque serão necessários em diferenças e cálculos internos.
+// Validate verifica se Money possui uma moeda aceita.
+// Valores negativos são permitidos em cálculos internos.
 func (money Money) Validate() error {
-	if money.currency != "BRL" {
+	if !isSupportedCurrency(money.currency) {
 		return ErrInvalidMoney
 	}
 
@@ -228,4 +231,99 @@ func (money Money) Negate() (Money, error) {
 	}
 
 	return result, nil
+}
+
+// Compara dois valores monetários da mesma moeda.
+// Retorna:
+// -1 money menor que other.
+// 0 valores iguais.
+// 1 money maior que other.
+func (money Money) Compare(other Money) (int, error) {
+	err := money.Validate()
+
+	if err != nil {
+		return 0, err
+	}
+
+	err = other.Validate()
+
+	if err != nil {
+		return 0, err
+	}
+
+	if money.currency != other.currency {
+		return 0, ErrCurrencyMismatch
+	}
+
+	if money.minorUnits < other.minorUnits {
+		return -1, nil
+	}
+
+	if money.minorUnits > other.minorUnits {
+		return 1, nil
+	}
+
+	return 0, nil
+}
+
+// Informa se a moeda é aceita
+func isSupportedCurrency(currency string) bool {
+	if currency == "BRL" {
+		return true
+	}
+
+	if currency == "USD" {
+		return true
+	}
+
+	return false
+}
+
+// Amount retorna o valor decimal com duas casas, sem usar ponto flutuante.
+func (money Money) Amount() (string, error) {
+	err := money.Validate()
+	if err != nil {
+		return "", err
+	}
+
+	digits := strconv.FormatInt(money.minorUnits, 10)
+	sign := ""
+
+	if strings.HasPrefix(digits, "-") {
+		sign = "-"
+		digits = digits[1:]
+	}
+
+	// Garante pelo menos um dígito inteiro e dois dígitos decimais.
+	for len(digits) < 3 {
+		digits = "0" + digits
+	}
+
+	decimalPosition := len(digits) - 2
+	wholePart := digits[:decimalPosition]
+	fractionPart := digits[decimalPosition:]
+
+	return sign + wholePart + "." + fractionPart, nil
+}
+
+// moneyJSON define o formato de saída. Os valores continuam sendo strings.
+type moneyJSON struct {
+	Amount   string `json:"amount"`
+	Currency string `json:"currency"`
+}
+
+// MarshalJSON é chamado automaticamente por json.Marshal.
+// Valores internos negativos podem ser serializados, como na reconciliação.
+func (money Money) MarshalJSON() ([]byte, error) {
+	amount, err := money.Amount()
+	if err != nil {
+		return nil, err
+	}
+
+	payload := moneyJSON{
+		Amount:   amount,
+		Currency: money.currency,
+	}
+
+	return json.Marshal(payload)
 }
